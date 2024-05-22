@@ -1,9 +1,12 @@
 #for a structured pointcloud (x*y, 1650*1700 or something)
 import numpy as np
 import pandas as pd
+import math
+from dataManipulation import raw_to_xyz
+from weld_detection_algorithm import subsample_points
 
 SUBSAMPLE_SIZE = 10 # number of pixels that wil be chosen for the subsampeled Pointcloud, a higher value means a bigger search-grid
-GRID_SPACING = 0.1
+GRID_SPACING = 0.5
 
 pointcloud_size= (1944,1200)
 
@@ -36,6 +39,21 @@ Returns a list containing the position (xyz) and pose (xyzw, or ijkw (quaternion
 
 def mean(a,b): 
     return [(a[0]+ b[0])/2, (a[1] +b[1])/2, (a[2], b[2])/2]
+
+def absolute(a):
+    assert len(a) == 3, "not a list/vector/array of length 3"
+    return np.sqrt(a[0]**2 + a[1]**2 + a[2]**2)
+
+def is_nan(input:list):
+    assert isinstance(input, (list, np.ndarray, tuple)), "The input is not any form of list"
+    nans= [np.nan, math.nan, float("nan"), "NaN"]
+    for i in input:
+        for nan in nans:
+            if i==nan or np.isnan(i): #overkill, but can potentially handle more wierd NaN values that we already have
+                return True
+    return False
+
+
 def restructure_pointcloud(pointcloud:list[list], pc_shape:tuple[int])-> list[list[list]]:
     # pointcloud = np.array(pointcloud)
     structured_pointcloud = np.reshape(pointcloud, (pc_shape[0], pc_shape[1], 3))
@@ -44,44 +62,98 @@ def restructure_pointcloud(pointcloud:list[list], pc_shape:tuple[int])-> list[li
 
 SUBSAMPLE_SIZE = SUBSAMPLE_SIZE//2 # this way the input declares the whole area
 
+def is_points_same(point1:list, point2:list):
+    if point1[0] == point2[0] and point1[1] == point2[1] and point1[2] == point2[2]:
+        return True
+    return False
+
 def get_index_of_point(point:list, Pointcloud:list[list[list]]) -> list:
     assert len(np.shape(Pointcloud)) ==3, f"shape of poincloud is not 3-dimensional, it is {np.shape(Pointcloud)}"
-    for i in range(len(np.shape(Pointcloud)[0])):
-        for j in range(len(np.shape(Pointcloud)[1])):
-            if point == Pointcloud[i,j]:
+    for i in range(np.shape(Pointcloud)[0]):
+        for j in range(np.shape(Pointcloud)[1]):
+            if is_points_same(point, Pointcloud[i,j]):
                 return [i,j]
     return []
 
-def create_plane(point:list, vector:list, grid_size:int, GRID_SPACING:float):
-    """creates a set of evenly spaced points in a plane defined by the point and vector, with size = 2*grid_size and spacing = GRID_SPACING
+def create_plane(point:list, vector:list, grid_size:int, grid_spacing:float, input_distance:float):
+    """creates a set of evenly spaced points in a plane defined by the point and vector, with size = 2*grid_size and spacing = grid_spacing
 
     Args:
         point (list): origin point
         vector (list): normal vector
         grid_size (int): gives the limit of the appointed points
-        GRID_SPACING (float): gives the spacing between the points
+        grid_spacing (float): gives the spacing between the points
     """
     x,y,z = vector
     x0, y0, z0 = point
-    plane_grid = []
-    for i in range(-grid_size, grid_size, GRID_SPACING):
-        for j in range(-grid_size, grid_size, GRID_SPACING):
-            for k in range(-grid_size, grid_size, GRID_SPACING):
-                plane= [i*x+x0, j*y +y0, k*z+z0]
-                plane_grid.append(plane)
+    area_limiter = 2
+    # print(f"{x, y, z = }")
+    # print(f"{x0, y0, z0 = }")
 
+    plane_grid = []
+    # print(f"{point= }")
+    input_distance = int(input_distance)
+    lim_upper = int(input_distance//grid_spacing +area_limiter//grid_spacing)
+    lim_lower = int((input_distance//grid_spacing -area_limiter//grid_spacing)//2)
+    grid_limits = list(range(lim_lower, lim_upper))
+    print(f"half of limits: {np.shape(grid_limits)}")
+    grid_limits.extend(list(range(-lim_upper, -lim_lower)))
+    print(f"all of limits: {np.shape(grid_limits)}")
+
+
+    grid_size=int(grid_size//grid_spacing)
+
+    print(f"actual grisize: {grid_size}")
+    for i in grid_limits:
+        for j in grid_limits:
+            for k in grid_limits:
+                plane= [(i*x)/grid_spacing+x0, (j*y)/grid_spacing +y0, (k*z)/grid_spacing+z0]
+                plane_grid.append(plane)
+        # print(f" in point {i = } in grid")
+    print("done making grid")
     return plane_grid
 
 def get_3D_min_max(subsampeled_pointcloud:list[list[list]])->list:
-    #choosing the first instance to avoid NaN problems
-    min=subsampeled_pointcloud[0,0]
-    max=subsampeled_pointcloud[0,0]
-    for row in subsampeled_pointcloud:
-        for values in row:
-            if np.NaN in values:#skips instances with NaN-values
+    #pick the first instace that is not NaN
+    min=[]
+    max=[]
+    if len(np.shape(subsampeled_pointcloud)) == 3:
+        for row in subsampeled_pointcloud:
+            for values in row:
+                # print(f"{values= }")
+                # print(f"{type(values)= }")
+                if is_nan(values):#skips instances with NaN-values
+                    # print("this is NaN value")
+                    continue
+                # print("this is not NaN value")
+                min= values
+                max= values
+                break
+        for row in subsampeled_pointcloud:
+            for values in row:
+                if is_nan(values):#skips instances with NaN-values
+                    continue
+                min = np.minimum(min, values)
+                max = np.maximum(max, values)
+        return min, max
+
+    elif len(np.shape(subsampeled_pointcloud)) == 2:
+        for values in subsampeled_pointcloud:
+            # print(f"{values= }")
+            # print(f"{type(values)= }")
+            if is_nan(values):#skips instances with NaN-values
+                # print("this is NaN value")
+                continue
+            # print("this is not NaN value")
+            min= values
+            max= values
+            break
+        for values in subsampeled_pointcloud:
+            if is_nan(values):#skips instances with NaN-values
                 continue
             min = np.minimum(min, values)
             max = np.maximum(max, values)
+
     return min, max
 
 def drop_NaN(Pointcloud:list[list]): #this might only work on np.NaN objects, testing needed for the Zivid/Pandas NaN values
@@ -117,10 +189,16 @@ def get_most_similar_points(grid:list[list], pointcloud:list[list[list]], thresh
     if len(np.shape(pointcloud))==3:
         pointcloud = np.reshape(pointcloud, (-1,3)) #flattens the subsampeled pointcloud as we dont need the shape anymore
     pointcloud = drop_NaN(pointcloud)
+    print("flattened and dropped nans")
+    print(f"{np.shape(grid)= }  ")
+    print(f"{np.shape(pointcloud)= }")
     for pc_point in pointcloud:
         for grid_point in grid:
             if np.linalg.norm(grid_point-pc_point) <= threshold:
                 chosen_points.append(pc_point) #important that the poincloud_point is chosen for accuracy/consistency
+                print(f"chose a point!")
+            # print(f"{grid_point}")
+        print(f"done big loop iteration for {pc_point = }")
     return chosen_points
 
 
@@ -174,6 +252,37 @@ def rotation(axis, theta = 0.0): #Rotation metrix from axis and magnitude w, the
 def deg_to_rad(deg):
     return (deg/360)*2*np.pi
 
+def subsample_pointcloud(pointcloud:list[list[list]], point:list, chosen_point_distance:float):
+    index_point = get_index_of_point(point=point, Pointcloud= pointcloud)
+    y0,x0= index_point
+    assert len(index_point), "no index found for the current point"
+
+    dist = 0
+    itery = 1
+    while dist < chosen_point_distance: #traverse in column-direction
+        dist = np.linalg.norm(point - pointcloud[y0+itery, x0])
+        itery+=1
+    iterx = 1
+    while dist < chosen_point_distance: #traverse in row-direction
+        dist = np.linalg.norm(point - pointcloud[y0, x0+iterx])
+        iterx+=1
+
+    avg_dist_pixels = (iterx + itery)//2 
+    diff_dist_pixels = abs(iterx - itery)
+    d=avg_dist_pixels + 4*diff_dist_pixels
+    subsample=[]
+    #find all pixels within a circle around the selected point
+    for y in range(int(max(0,index_point[0] - d)), int(min(np.shape(pointcloud)[0] - 1,index_point[0] + d))):
+        for x in range(int(max(0,index_point[1] - np.sqrt(d**2 - (y -index_point[0])**2))), 
+                       int(min(np.shape(pointcloud)[1] - 1,index_point[1] + np.sqrt(d**2 - (y -index_point[0])**2)))):
+            subsample.append(pointcloud[y,x])
+
+    
+    # sub_cloud = pointcloud[index_point[0]-SUBSAMPLE_SIZE:index_point[0]+SUBSAMPLE_SIZE, 
+    #                         index_point[1]-SUBSAMPLE_SIZE:index_point[1]+SUBSAMPLE_SIZE]
+    print(np.array(subsample))
+    return np.array(subsample)
+
 
 #first iteration: get the pose-vector based on the method above, for the next ones, change its orientation based on the calculated input-vector
 def get_pose(point:list, PointCloud:list[list[list]], vector:list, angle_offset:int=0, chosen_point_distance:float = 10) -> list:
@@ -190,14 +299,22 @@ def get_pose(point:list, PointCloud:list[list[list]], vector:list, angle_offset:
         list: _description_
     """
     #subsample the pointcloud:
-    index_point = get_index_of_point(point=point, Pointcloud=PointCloud)
-    assert len(index_point), "no index found for the current point"
-    sub_cloud = PointCloud[index_point[0]-SUBSAMPLE_SIZE:index_point[0]+SUBSAMPLE_SIZE][index_point[1]-SUBSAMPLE_SIZE:index_point[1]+SUBSAMPLE_SIZE]
+
+
+    sub_cloud = subsample_pointcloud(PointCloud, point, chosen_point_distance)
     #get the maximum size of the sampeled area, makes sure all points within this area is taken into account
-    min, max = get_3D_min_max
-    grid_size = np.max(max - min)
-    plane_grid = create_plane(point=point, vector=vector, grid_size=grid_size)
+    # print(sub_cloud)
+    min, max = get_3D_min_max(sub_cloud)
+    print(f"{max, min = }")
+    grid_size =np.max(max-min)
+    print(f"{grid_size= }")
+    #this is only for testing
+    grid_size = 10 #!!!!!!!!!!!!!!
+    #......
+    plane_grid = create_plane(point=point, vector=vector, grid_size=grid_size, grid_spacing=GRID_SPACING, input_distance= chosen_point_distance)
+    print("starting intersection_points")
     intersection_points= get_most_similar_points(grid=plane_grid, pointcloud=sub_cloud, threshold=0.5)
+    print("starting chosen_points")
     chosen_points = get_mapping_points(point, intersection_points, chosen_point_distance)
 
     #calculate the pose
@@ -212,6 +329,7 @@ def get_pose(point:list, PointCloud:list[list[list]], vector:list, angle_offset:
     pose_inv = rotation(rotation_axis, angle_offset_rad) * pose_inv #NOTE make sure this rotates the correct way (pre/post multiplication and sign of rotation)
     #reversing the pose as it is pointing out of the workpiece
     pose= -pose_inv
+    print("returning pose")
 
     return pose
 
@@ -219,11 +337,11 @@ def change_pose(pose, current_vec, next_vec):
     current_vec = np.array(current_vec)
     next_vec = np.array(next_vec)
     pose = np.array(pose)
-    assert (np.abs(current_vec)* np.abs(next_vec)) != 0, f"Error, one of the input-vectors: {current_vec =}, {next_vec = } is a null-vector"
-    angle_rad= np.arcsin(np.abs(np.cross(current_vec, next_vec))/ (np.abs(current_vec)* np.abs(next_vec)))
+    assert (absolute(current_vec)* absolute(next_vec)) != 0, f"Error, one of the input-vectors: {current_vec =}, {next_vec = } is a null-vector"
+    angle_rad= np.arcsin(absolute(np.cross(current_vec, next_vec))/ (absolute(current_vec)* absolute(next_vec)))
     angle_deg = angle_rad/(2*np.pi) * 360
-    # axis = np.cross(current_vec, pose)/np.abs(np.cross(pose, current_vec)) #normalizing the axis vector
-    axis = np.cross(current_vec, next_vec)/np.abs(np.cross(current_vec, next_vec))
+    # axis = np.cross(current_vec, pose)/absolute(np.cross(pose, current_vec)) #normalizing the axis vector
+    axis = np.cross(current_vec, next_vec)/absolute(np.cross(current_vec, next_vec))
     new_pose= rotation(axis, angle_deg) * pose # NOTE the negative sign is there based on the sequence in which
     #maby normalize?
     return new_pose
@@ -268,13 +386,28 @@ def estimate_poses(points:list[list], PointCloud_in:list[list], vectors:list[lis
     if np.shape(poses)[0] ==  np.shape(vectors)[0]:
         return poses
     #if there is a logic-error in the previous steps, this should fix it, might be overkill
-    elif np.shape(poses)[0] >  np.shape(vectors)[0]:
-        while np.shape(poses)[0] >  np.shape(vectors)[0]:
-            poses.pop(0)
-    elif np.shape(poses)[0] <  np.shape(vectors)[0]:
-        while np.shape(poses)[0] <  np.shape(vectors)[0]:
-            vectors.pop(0)
+
+    # elif np.shape(poses)[0] >  np.shape(vectors)[0]:
+    #     while np.shape(poses)[0] >  np.shape(vectors)[0]:
+    #         poses.pop(0)
+    # elif np.shape(poses)[0] <  np.shape(vectors)[0]:
+    #     while np.shape(poses)[0] <  np.shape(vectors)[0]:
+    #         vectors.pop(0)
     return poses
 
 
 
+def main():
+    df= pd.read_csv("weld_path.csv", header=None)
+    PC = raw_to_xyz(pd.read_csv("Front2.csv", header=None))
+    subsample, vectors, weld_index= subsample_points(np.array(raw_to_xyz(df)))
+#    print(np.array(subsample))
+#    print(np.array(vectors))
+#    print(f"{len(subsample)= }, {len(vectors) = }")
+    poses= estimate_poses(subsample, PC, vectors, 30)
+    print(f"{poses = }")
+
+    return
+
+if __name__ == "__main__":
+    main()
