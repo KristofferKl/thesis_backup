@@ -29,19 +29,21 @@ def is_point_in(point:list, in_this:list[list]):
 
 
 
-def subsample_points(points:np.ndarray[list], NPOINTS= 20, threshold_weld= 0.442, threshold_noise= 0.966):
+def subsample_points(points:np.ndarray[list], threshold_weld= 0.442, threshold_noise= 0.966):
     #this function looks n points forward
-    n = 20 # could make this a function based on NPOINTS aswell, but want something kinda large to avoid problems with the coordinates alternating
+    n = 10 # could make this a function based on npoints aswell, but want something kinda large to avoid problems with the coordinates alternating
+    sample_factor = 0.02119 # from thesting this is shown to give pretty good results
     subsample = []
     vectors = []
     weld_index = []
     point_index_stack = []
-    # print(f"{np.shape(points)[0]//NPOINTS = }")
-    scalar = np.shape(points)[0]//NPOINTS
-    # print(f"{list(range(NPOINTS)) = }")
-    for i in range(NPOINTS):
+    npoints = int(np.shape(points)[0] * sample_factor)
+    # print(f"{np.shape(points)[0]//npoints = }")
+    scalar = np.shape(points)[0]//npoints
+    # print(f"{list(range(npoints)) = }")
+    for i in range(npoints):
         point_index_stack.append(i*scalar)
-    # point_index_stack = np.shape(points)[0]//NPOINTS * list(range(NPOINTS)) # finish this
+    # point_index_stack = np.shape(points)[0]//npoints * list(range(npoints)) # finish this
     # print(f"{points[0:200:10] = }")
     # print(f"{len(point_index_stack)= }")
     if point_index_stack[0] == 0: #this should have a aditional check
@@ -51,16 +53,16 @@ def subsample_points(points:np.ndarray[list], NPOINTS= 20, threshold_weld= 0.442
     subsample.append(points[0]) # adding first point to the subsample as the first ten points are not eglible to be chosen
     for i in range(np.shape(points)[0]):
         # print(f"{points[i]= }")
-        if i + n >= len(points)-1:
+        if i + 2*n >= len(points)-1:
             break
         
         current = points[i]
         # print(f"{current= }")
         
 
-        next_mean = mean(points[i+n//2-1], points[i+n//2]) #sums the value of each coordinate before dividing it by 2, returns the mean of the input points, goes to half the range of the currenntly viewed points
+        next_mean = mean(points[i+n-1], points[i+n]) #sums the value of each coordinate before dividing it by 2, returns the mean of the input points, goes to half the range of the currenntly viewed points
         current_vector = next_mean - current #could create a "current_mean" to make the results more accurate
-        observed = points[i+n]
+        observed = points[i+2*n]
         observed_vector = observed - next_mean 
         # print(f"{current_vector= } ")
         current_vector_normalized = current_vector / absolute(current_vector)
@@ -103,6 +105,14 @@ def main():
    print(f"{np.shape(subsample)= }")
    print(f"{np.array(vectors) = } ")
    print(f"{len(subsample)= }, {len(vectors) = }")
+
+   for i in range(len(vectors)):
+       if i+1 >= len(vectors):
+           break
+       cross = np.cross(vectors[i], vectors[i+1])
+
+    #    print(f"{cross/absolute(cross), absolute(cross)  = }")
+       
    
    
    return

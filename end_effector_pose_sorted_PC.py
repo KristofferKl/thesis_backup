@@ -338,7 +338,7 @@ def get_mapping_points(origin_point:list, points:list[list], input_distance:floa
 
 
 #first iteration: get the pose-vector based on the method above, for the next ones, change its orientation based on the calculated input-vector
-def get_pose(point:list, PointCloud:list[list[list]], vector:list, angle_offset:int=0, chosen_point_distance:float = 10) -> list:
+def get_pose(point:list, PointCloud:list[list[list]], vector:list, angle_offset:int, chosen_point_distance:float) -> list:
     """calculates the end-effector pose based on input point, vector and pointcloud
 
     Args:
@@ -380,26 +380,35 @@ def get_pose(point:list, PointCloud:list[list[list]], vector:list, angle_offset:
     angle_offset_rad = deg_to_rad(angle_offset)
     pose_inv = rotation(rotation_axis, angle_offset_rad) @ first_pose_vec #NOTE make sure this rotates the correct way (pre/post multiplication and sign of rotation)
     #reversing the pose as it is pointing out of the workpiece
-    pose= -pose_inv # add the negative sign if end-effetor is pointing the wrong way, its supposed to be needed
+    pose= -pose_inv # add the negative sign if end-effetor is pointing the wrong way, its supposed to be needed 
+    pose = pose/absolute(pose)
     print("returning pose")
+    print(f"{pose = }")
     return pose
 
 def change_pose(pose, current_vec, next_vec):
     """ Changes the selected pose based on the vector for the next points, should not be a big change on a "straight line"
 
     """
+    
     #potentially big numerical errordue to rounding/normalizing if the vectors are almost alligner or allmost 90 degrees on each other du to division (cross or dot product =0)
     current_vec = np.array(current_vec)
     next_vec = np.array(next_vec)
     pose = np.array(pose)
     assert (absolute(current_vec)* absolute(next_vec)) != 0, f"Error, one of the input-vectors: {current_vec =}, {next_vec = } is a null-vector"
 
-    angle_rad= np.arcsin(absolute(np.cross(current_vec, next_vec))/ (absolute(current_vec)* absolute(next_vec)))
-    angle_deg = angle_rad/(2*np.pi) * 360
+    # Normalizing the input (in case it is not done already)
+
+    current_vec = current_vec/absolute(current_vec)
+    next_vec = next_vec/absolute(next_vec)
+    # print(f"{current_vec, next_vec =}")
+
+    angle_rad= np.abs(np.arcsin(absolute(np.cross(current_vec, next_vec))))
+    angle_deg = 360* angle_rad/(2*np.pi)
     # axis = np.cross(current_vec, pose)/absolute(np.cross(pose, current_vec)) #normalizing the axis vector
 
-    # if absolute(np.cross(current_vec, next_vec)) <= 0.1: 
-    if absolute(np.cross(current_vec, next_vec)) == 0: #original version
+    # if absolute(np.cross(current_vec, next_vec)) == 0: #original version, this could be implemented if there are curves on the workpiece (welding a circle etc, only introduces errors for our case)
+    if absolute(np.cross(current_vec, next_vec)) <= 0.60: # a little less than 45 degrees angle
     
         return pose
     else:
@@ -419,7 +428,7 @@ def change_pose(pose, current_vec, next_vec):
 
 
 
-def estimate_poses(points:list[list], PointCloud_in:list[list], vectors:list[list], angle_offset:int, chosen_point_distance:float = 10):
+def subsample_path_and_estimate_poses(path_df, PointCloud_in:list[list], angle_offset:int= 15, chosen_point_distance:float= 10):
     poses = []
     """ Calculates the end-effector pose for a welding path based on the surounding walls and end-effectors movement-vector
 
@@ -437,8 +446,8 @@ def estimate_poses(points:list[list], PointCloud_in:list[list], vectors:list[lis
     #extract the first pose
     # NOTE: due to edge-variations we want to extract the 2nd or 3rd point, not the first, then superimpose this on the first (and second/third) point
     poses = []
-    
-
+    points, vectors, weld_index= subsample_points(np.array(raw_to_xyz(path_df)))
+    PointCloud_xyz = PC = raw_to_xyz(PointCloud_in)
 
     #restructure the pointcloud
     # print(f"{np.shape(PointCloud_in) = }")
@@ -446,14 +455,14 @@ def estimate_poses(points:list[list], PointCloud_in:list[list], vectors:list[lis
     # print(f"{np.shape(reshaped_pc)= }")
     # df= pd.DataFrame(reshaped_pc)
     # df.to_csv("Structured_pointcloud", header = None, index = None)
-    PointCloud= restructure_pointcloud(PointCloud_in, PointCloud_size)
+    PointCloud= restructure_pointcloud(PointCloud_xyz, PointCloud_size)
     # print(f"{PointCloud[194:198, 99:102] = }")
 
 
 
     #get the pose
     starting_point_index = choose_first_point(points, 50)
-    pose= get_pose(points[starting_point_index], PointCloud, vectors[starting_point_index], 30, 10)
+    pose= get_pose(points[starting_point_index], PointCloud, vectors[starting_point_index], angle_offset=angle_offset, chosen_point_distance=chosen_point_distance)
 
     # assumes the same pose for the beginning
     for i in range(starting_point_index+1):
@@ -465,8 +474,9 @@ def estimate_poses(points:list[list], PointCloud_in:list[list], vectors:list[lis
             continue
         poses.append(change_pose(poses[i-1], vectors[i-1], vectors[i]))
 
-    if np.shape(poses)[0] ==  np.shape(vectors)[0]:
-        return poses
+    if np.shape(poses)[0] !=  np.shape(vectors)[0]:
+        print(f"The number of Poses and points/vectors are not the same!!! \n {np.shape(poses)[0], np.shape(vectors)[0] =}")
+    return points, np.array(poses)
     #if there is a logic-error in the previous steps, this should fix it, might be overkill
 
     # elif np.shape(poses)[0] >  np.shape(vectors)[0]:
@@ -475,23 +485,24 @@ def estimate_poses(points:list[list], PointCloud_in:list[list], vectors:list[lis
     # elif np.shape(poses)[0] <  np.shape(vectors)[0]:
     #     while np.shape(poses)[0] <  np.shape(vectors)[0]:
     #         vectors.pop(0)
-    return poses
+
+
 
 
 
 def main():
-    df= pd.read_csv("weld_path1.csv", header=None)
+    df= pd.read_csv("weld_path.csv", header=None)
     PC = raw_to_xyz(pd.read_csv("Front2.csv", header=None))
     # print(f"{PC[1122500:1122520]= }")
 
-    subsample, vectors, weld_index= subsample_points(np.array(raw_to_xyz(df)))
-    print(f"{np.shape(subsample)= }")
-    print(f"{np.shape(vectors)= }")
+    # subsample, vectors, weld_index= subsample_points(np.array(raw_to_xyz(df)))
+    # print(f"{np.shape(subsample)= }")
+    # print(f"{np.shape(vectors)= }")
 
 #    print(np.array(subsample))
-#    print(np.array(vectors))
+    # print(f"{np.array(vectors)= }")
 #    print(f"{len(subsample)= }, {len(vectors) = }")
-    poses= np.array(estimate_poses(subsample, PC, vectors, 30, 10))
+    poses= np.array(subsample_path_and_estimate_poses(df, PC, 15, 10))
     print(f"{poses = }")
 
     return
