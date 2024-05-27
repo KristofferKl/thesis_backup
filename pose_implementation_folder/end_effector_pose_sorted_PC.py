@@ -378,9 +378,9 @@ def get_pose(point:list, PointCloud:list[list[list]], vector:list, angle_offset:
     #rotate the extracted pose around the axis
     rotation_axis= np.cross(vector, first_pose_vec )
     angle_offset_rad = deg_to_rad(angle_offset)
-    pose_inv = rotation(rotation_axis, angle_offset_rad) @ first_pose_vec #NOTE make sure this rotates the correct way (pre/post multiplication and sign of rotation)
+    pose_inv = -rotation(rotation_axis, angle_offset_rad) @ first_pose_vec #NOTE make sure this rotates the correct way (pre/post multiplication and sign of rotation)
     #reversing the pose as it is pointing out of the workpiece
-    pose= -pose_inv # add the negative sign if end-effetor is pointing the wrong way, its supposed to be needed 
+    pose= pose_inv # add the negative sign if end-effetor is pointing the wrong way, its supposed to be needed 
     pose = pose/absolute(pose)
     print("returning pose")
     print(f"{pose = }")

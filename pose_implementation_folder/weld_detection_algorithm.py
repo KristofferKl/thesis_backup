@@ -32,24 +32,28 @@ def is_point_in(point:list, in_this:list[list]):
 def subsample_points(points:np.ndarray[list], threshold_weld= 0.442, threshold_noise= 0.966):
     #this function looks n points forward
     n = 10 # could make this a function based on npoints aswell, but want something kinda large to avoid problems with the coordinates alternating
-    sample_factor = 0.02119 # from thesting this is shown to give pretty good results
+    # sample_factor = 0.02119 # from thesting this is shown to give pretty good results
+    sample_factor= 0.01
     subsample = []
     vectors = []
     weld_index = []
     point_index_stack = []
     npoints = int(np.shape(points)[0] * sample_factor)
     # print(f"{np.shape(points)[0]//npoints = }")
-    scalar = np.shape(points)[0]//npoints
-    # print(f"{list(range(npoints)) = }")
-    for i in range(npoints):
-        point_index_stack.append(i*scalar)
-    # point_index_stack = np.shape(points)[0]//npoints * list(range(npoints)) # finish this
-    # print(f"{points[0:200:10] = }")
-    # print(f"{len(point_index_stack)= }")
-    if point_index_stack[0] == 0: #this should have a aditional check
-        point_index_stack.pop(0)
-    # print(f"{point_index_stack= }")
+    if npoints != 0:
+        scalar = np.shape(points)[0]//npoints
 
+        # print(f"{list(range(npoints)) = }")
+        for i in range(npoints):
+            point_index_stack.append(i*scalar)
+        # point_index_stack = np.shape(points)[0]//npoints * list(range(npoints)) # finish this
+        # print(f"{points[0:200:10] = }")
+        # print(f"{len(point_index_stack)= }")
+        if point_index_stack[0] == 0: #this should have a aditional check
+            point_index_stack.pop(0)
+        # print(f"{point_index_stack= }")
+
+    #does probably not need an else statement
     subsample.append(points[0]) # adding first point to the subsample as the first ten points are not eglible to be chosen
     for i in range(np.shape(points)[0]):
         # print(f"{points[i]= }")
@@ -90,11 +94,12 @@ def subsample_points(points:np.ndarray[list], threshold_weld= 0.442, threshold_n
                 
     #aditionally this can be included to make shure the last point of the line is included:
     last = points[-1]
-    if is_point_in(last, subsample): #evt: if last != subsample[-1]:
+    if not is_point_in(last, subsample): #evt: if last != subsample[-1]:
         subsample.append(last)
-        vectors.append(vectors[-1]) #adding the last vector once more to have a corresponding vector to the last point
+        vectors.append(vectors[-1]) #adding the last vector to have a corresponding vector to the last point
     #
     assert np.shape(subsample)[0]==np.shape(vectors)[0], f"Error: the output subsample {np.shape(subsample)} and vectors {np.shape(vectors)} does not have the same amount of datapoints"
+    print(f"{np.shape(subsample) = } \n {np.shape(vectors) = }")
     return subsample, vectors, weld_index
 
 #NOTE: to look "forward" in the path, one might want to remove the first vector and instead add a copy of the last vector, but this miught cause problems
