@@ -326,7 +326,7 @@ def main():
     df2 = df.copy()
 
 
-        #### TRANSFORMATION ####
+        ####filter and subsample and pose##########
     df_filtered = filter_df_by_df(df,lines_df)
     df_filtered2 = filter_df_by_df(df2,lines_df2)
 
@@ -350,7 +350,9 @@ def main():
 
 
 
+    # output = do_subsample_extract_transform(df_sorted_lines_comb, df, robot_matrix, camera_matrix, angle_offset=15, chosen_point_distance=10, pose_as_quaternion_xyzw= True)
     output = do_subsample_extract_transform(df_sorted_lines_comb, df, robot_matrix, camera_matrix, angle_offset=15, chosen_point_distance=10, pose_as_quaternion_xyzw= True)
+
     out_df = pd.DataFrame(output)
     out_df.to_csv("OUTPUT.csv", header = None, index = None)
 
@@ -402,7 +404,7 @@ def main():
 
 
 
-
+        #### TRANSFORMATION ####
 
     df_sorted_lines1= df_transformation(matrix_rob=robot_matrix, matrix_cam= camera_matrix, points= df_sorted_lines1) #pos01, camera_matrix, df_sorted_lines1)
     df_sorted_lines2= df_transformation(robot_matrix, camera_matrix, df_sorted_lines2)
@@ -412,7 +414,7 @@ def main():
     df_sorted_lines2.to_csv("weld_path2_transformed.csv", header = None, index = None)
     df_sorted_lines_comb.to_csv("weld_path_transformed.csv", header = None, index = None)
 
-
+        #### end of transformation ####
     ####### time measurements
     end_time = time.time()
     print()
