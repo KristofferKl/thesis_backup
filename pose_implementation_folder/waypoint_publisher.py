@@ -339,10 +339,22 @@ point_pose_input = np.array(pd.read_csv("/home/zivid/pytorch_env/OUTPUT.csv", se
 print(f"{point_pose_input= }")
 
 #position and pose for our coordinate frame relative to to world:
-position_baseframe = [-1.1072, 2.2256, 0.82]
+# position_baseframe = [-1.1072, 2.2256, 0.82]
+position_baseframe = [-1.1072, 2.2256, 1.325]
+
 orientation_baseframe = [0, 0, -0.26303, 0.96479]
 
 world = [0,0,0,1]
+
+robot2_capture_pos_1 = [-0.51684, 2.2927, 1.0029]
+# robot2_capture_quat_1 = [0.13725, 0.32965, -0.39001, 0.84875]
+
+robot2_capture_quat_1= [0.6972, -0.042663, -0.50888, 0.50311]
+robot2_capture_point_pose_1 = [-0.51684, 2.2927, 1.0029, 0.6972, -0.042663, -0.50888, 0.50311]
+
+robot2_capture_quat_2 = [0.22, -0.48, -0,59, 0.62]
+robot2_capture_point_pose_2 = [-0.51684, 2.2927, 1.0029, 0.22, -0.48, -0.59, 0.62]
+
 
 
 
@@ -400,11 +412,70 @@ def point_rotation_by_quaternion(point,q): #KK edit
         q_conj = quaternion_qunj(q)
         return quaternion_mult(quaternion_mult(q,r),q_conj)#returns xyzw rotated
     
+def create_image_pose(current_orientation_euler):
 
+    # Example current orientation in Euler angles (roll, pitch, yaw) in degrees
+
+    # Convert current orientation to rotation matrix
+    current_rotation = R.from_euler('xyz', current_orientation_euler, degrees=True)
+    current_rotation_matrix = current_rotation.as_matrix()
+
+    # Define the desired "up" direction (z-axis pointing up in Cartesian space)
+    up_direction = np.array([0, 0, 1])
+
+    # Align the z-axis of the current rotation to the "up" direction
+    # This is done by ensuring the third column of the rotation matrix is the up direction
+    # while keeping the orthogonality and right-handedness of the matrix
+    z_axis = current_rotation_matrix[:, 2]
+
+    # Compute the rotation needed to align z_axis to up_direction
+    # This can be done using the cross product and angle between the vectors
+    axis = np.cross(z_axis, up_direction)
+    angle = np.arccos(np.dot(z_axis, up_direction) / (np.linalg.norm(z_axis) * np.linalg.norm(up_direction)))
+
+    # Rotation axis needs to be normalized
+    axis = axis / np.linalg.norm(axis)
+
+    # Create the rotation matrix to align z-axis to the up direction
+    alignment_rotation = R.from_rotvec(angle * axis)
+    alignment_rotation_matrix = alignment_rotation.as_matrix()
+
+    # Combine the rotations
+    new_rotation_matrix = alignment_rotation_matrix @ current_rotation_matrix
+
+    # Convert the new rotation matrix to a quaternion
+    new_rotation = R.from_matrix(new_rotation_matrix)
+    new_orientation_quaternion = new_rotation.as_quat()
+    return new_orientation_quaternion
 
 
 
 #KK
+def input_vec_to_rotation_quat(vec):
+    x_vec = np.array([0,0,1]) #original vector that is transformed as given by q=[0,0,0,1] , w = 1, imaginary is 0
+    # assert vec[3]==0, "Error, the assumed 'pure vector' contains a real part"
+    if len(vec) > 3:
+        vec = np.array(vec[:3]) #this is now of length 3, removed  w=0
+    axis= np.cross(x_vec, vec)
+    axis = axis/np.linalg.norm(axis)
+    angle_rad= 2*np.arctan(np.linalg.norm(np.linalg.norm(vec)*x_vec - np.linalg.norm(x_vec)*vec)/
+                       np.linalg.norm(np.linalg.norm(vec)*x_vec + np.linalg.norm(x_vec)*vec))
+    axis *= angle_rad
+    r = R.from_rotvec(axis)
+    q = r.as_quat() #get the rotation quaternion
+    # r = R.from_rotvec(vec, angle_rad)
+    # q = r.as_quat() #get the rotation quaternion
+    return q
+
+def rotate_by_R_from_quat(vec, quat):
+    global offset
+    r=R.from_quat(quat)
+    rot = r.as_matrix()
+    if len(vec) >3: # in case it has a 0 added as quat-padding
+        vec = vec[:3]
+
+    return np.array(rot) @ np.array(vec) 
+
 def transform_input_by_quaternionPose_and_pos(point_pose_in:list[list], rotation_quaternion, position_offset): #this currently has ofset_local that moves the job up in the y-position
     """ Takes a list representing the position (index 0,1,2) and pose (index 3,4,5,6), a rotation_quaternion and a position_offset, 
         Transforms the input point_pose to a new frame.
@@ -415,33 +486,11 @@ def transform_input_by_quaternionPose_and_pos(point_pose_in:list[list], rotation
     # offset_local = 0.52 #this is aproximately the height of the lower part of the workpiece
 
 
-    offset_local = 0.7 # 0.70 is good for testing
-    def input_vec_to_rotation_quat(vec):
-
-        x_vec = np.array([0,0,1]) #original vector that is transformed as given by q=[0,0,0,1] , w = 1, imaginary is 0
-        # assert vec[3]==0, "Error, the assumed 'pure vector' contains a real part"
-        if len(vec) > 3:
-            vec = np.array(vec[:3]) #this is now of length 3, removed  w=0
-        axis= np.cross(x_vec, vec)
-        axis = axis/np.linalg.norm(axis)
-        angle_rad= 2*np.arctan(np.linalg.norm(np.linalg.norm(vec)*x_vec - np.linalg.norm(x_vec)*vec)/
-                           np.linalg.norm(np.linalg.norm(vec)*x_vec + np.linalg.norm(x_vec)*vec))
-        axis *= angle_rad
-        r = R.from_rotvec(axis)
-        q = r.as_quat() #get the rotation quaternion
-        # r = R.from_rotvec(vec, angle_rad)
-        # q = r.as_quat() #get the rotation quaternion
-        return q
+    offset_local = 0.0 # 0.70 is good for testing
     # def input_rot_to_pose(vec):
 
     
-    def rotate_by_R_from_quat(vec, quat):
-        r=R.from_quat(quat)
-        rot = r.as_matrix()
-        if len(vec) >3: # in case it has a 0 added as quat-padding
-            vec = vec[:3]
-
-        return np.array(rot) @ np.array(vec) 
+    
         
 
 
@@ -470,9 +519,24 @@ def transform_input_by_quaternionPose_and_pos(point_pose_in:list[list], rotation
         # pose = point_rotation_by_quaternion(pose, np.array(pose)/4) #THIS IS ADDED AS AN EXPERIMENT, NOT THE OG IMPLEMENTATION!!!! 
 
         i,j,k,w = pose/np.abs(np.linalg.norm(pose))#alltid normaliser etter bruk
-        point_pose_out.append([x1,y1,z1+offset_local, i,j,k,w])
+        point_pose_out.append([x1,y1,z1+offset_local+ offset, i,j,k,w])
     assert np.shape(point_pose_in) == np.shape(point_pose_out), f"Error, the resulting point_pose with shape: {np.shape(point_pose_out)}, does not match the input point_pose with shape: {np.shape(point_pose_in)}"
     return point_pose_out
+
+
+def set_pose_orientation(pose ,angle_radians):
+    i, j, k, w = pose
+    angle_rad = np.arccos(w)
+
+    i /= angle_rad
+    j /= angle_rad
+    k /= angle_rad
+
+    s = np.sin(angle_radians)
+    c = np.cos(angle_radians)
+    new_pose = [i*s, j*s, k*s, c]
+
+    return new_pose/np.linalg.norm(new_pose)
 
 
 def point_pose_scale_from_mm_to_m(point_pose_list:list[list]):
@@ -518,7 +582,7 @@ def circle(r, x, y, z, n_points = 100):
     return points
 
 
-def zivid_job(point_pose_list, rotation_quaternion, world, position_offset):
+def zivid_job(point_pose_list, rotation_quaternion, position_offset):
     result = []
 
     # rot_quat = point_rotation_by_quaternion(orientation_baseframe, world) #this one is stil in testing
@@ -531,6 +595,7 @@ def zivid_job(point_pose_list, rotation_quaternion, world, position_offset):
     # sup_pose /= 0.5
     for pp in point_pose:
         # print(pp)
+
         result.append(create_pose(pp[0], pp[1], pp[2],
                                     pp[3], pp[4], pp[5] ,pp[6])) 
                                   
@@ -541,7 +606,34 @@ def zivid_job(point_pose_list, rotation_quaternion, world, position_offset):
         # 0,0,1,0)) #straight down
         # 0,0,0,1)) # straight down
 
-    # sup_pose = np.array([1,1,-0.5,0.5]) # denne er ish det vi vil ha
+
+    # end_pose = point_rotation_by_quaternion(robot2_capture_point_pose_1[3:], orientation_baseframe)
+
+    
+    # xi, yi, zi, ii, ji, ki, wi = robot2_capture_point_pose_2
+    # # placeholder_pose = [ii, ji, ki, wi] 
+    # placeholder_pose = end_pose
+    # placeholder_pose /= np.linalg.norm(np.array(placeholder_pose))
+    # ii, ji, ki, wi = placeholder_pose
+    # ii, ji, ki, wi = set_pose_orientation([ii,ji,ki,wi], 0)
+    # xi, yi, zi = robot2_capture_pos_1
+    # cam_pose = create_image_pose([30, 45, 60])
+    # ii, ji, ki, wi = cam_pose
+
+
+    ########### this kinda works, fix orientation?
+    xi, yi, zi = robot2_capture_pos_1
+    input_vec = np.array([0.3, -0.3, -0.7])
+    input_vec /= np.linalg.norm(input_vec)
+
+    quat = input_vec_to_rotation_quat(input_vec)
+    # quat = set_pose_orientation(quat, np.pi/2)
+    ii, ji, ki, wi = quat
+
+
+
+    result.append(create_pose(xi+0.20, yi-0.20, zi-0.25, ii, ji, ki, wi)) 
+
     return result
 
 
@@ -650,7 +742,7 @@ def getWaypoints(job_nr):
 
     elif job_nr == 5:
         print("starting job 5")
-        msg.waypoints = zivid_job(point_pose_input,orientation_baseframe,world, position_baseframe)
+        msg.waypoints = zivid_job(point_pose_input,orientation_baseframe, position_baseframe)
         # msg.waypoints.insert(0,create_pose(cx+0.5, cy, 1.4, -0.5720614, 0.5720614, 0, 0.5877852522924731)) #<- needed if robot is at home +-w if error
     if (len(msg.is_job) != len(msg.waypoints)):
             for w in msg.waypoints:
