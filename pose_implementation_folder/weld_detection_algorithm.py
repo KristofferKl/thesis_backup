@@ -108,7 +108,7 @@ def main():
    df= pd.read_csv("weld_path1.csv", header=None)
    subsample, vectors, weld_index= subsample_points(np.array(raw_to_xyz(df)))
    print(f"{np.shape(subsample)= }")
-   print(f"{np.array(vectors) = } ")
+#    print(f"{np.array(vectors) = } ")
    print(f"{len(subsample)= }, {len(vectors) = }")
 
    for i in range(len(vectors)):

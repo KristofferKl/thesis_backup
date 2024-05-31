@@ -119,6 +119,39 @@ def do_subsample_extract_transform(extracted_df, pointcloud, robot_matrix, camer
     for i in range(np.shape(transformed_points)[0]):
         placeholder = np.concatenate((transformed_points[i], transformed_poses[i]), axis=None)
         comb.append(placeholder)
+    
+
+    if False:
+        fac = 10
+        x1,y1,z1,x,y,z,w = [],[],[],[],[],[],[]
+        for i in comb:
+            x10,y10,z10,x0,y0,z0,w0 = i
+
+            x1.append(x10)
+            y1.append(y10)
+            z1.append(z10)
+            x.append(x0*fac+x10)
+            y.append(y0*fac+y10)
+            z.append(z0*fac+z10)
+
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+
+        ax.scatter(x1, y1, z1, color='b', s=5)
+        ax.scatter(x, y, z, color='r', s=5, alpha=0.5)
+
+
+
+        # ax.plot_surface(x, y, z, color='b', alpha=0.5)
+
+        # Plot the point on the plane
+
+        # Set labels
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        plt.show()
 
     return np.array(comb)
 
@@ -190,6 +223,7 @@ def main():
     round2_start_time = time.time()
     if runde2: #change this later to set only this part to activate when re-running on a new image
         paths= ["weld_path1.csv", "weld_path2.csv"]
+        # paths_templates = ["template_result"]
         apply_template_matching_automation(skel_image= skeleton, 
                                            path_paths=paths, 
                                            df=df, 
@@ -239,13 +273,15 @@ def main():
         # cx, cy = event2canvas(event, canvas)
         # print ("(%d, %d) / (%d, %d)" % (event.x,event.y,cx,cy))
         _coordinate_holder.append([event.x, event.y])
-    
-
-    def right_click(event):
         _bounding_box_center.append([event.x, event.y])
-        # _bounding_box_center = [event.x, event.y]
 
-        # print(_bounding_box_center)
+    
+#use this for single-point template matching (3 point is in progress)
+    # def right_click(event):
+    #     _bounding_box_center.append([event.x, event.y])
+    #     # _bounding_box_center = [event.x, event.y]
+
+    #     # print(_bounding_box_center)
     
     def quit(event):
         print("Q has been pressed, exiting window")
@@ -261,13 +297,13 @@ def main():
         else:
             print()
             print(f"only {len(_coordinate_holder)} points {len(_bounding_box_center)} box centers chosen")
-            print("3 points (left click), and 1 bounding box center (right click) are needed")
+            print("3 points (left click) ")#, and 1 bounding box center (right click) are needed")
             print(f"Please choose the remaining ({max(3-len(_coordinate_holder),0)}) points and ({max(1-len(_bounding_box_center),0)}) box centers ")
 
 
     # mouseclick event
     canvas.bind("<ButtonPress-1>", left_click)
-    canvas.bind("<ButtonPress-3>", right_click)
+    # canvas.bind("<ButtonPress-3>", right_click)
     root.bind("<Return>", next)
     root.bind("q", quit)
     # root.bind("<Key>", quit)
@@ -280,15 +316,26 @@ def main():
     #### EXITING THE TKinter LOOP ####
     second_start_time= time.time()
     skeleton = ski.io.imread(img_path, as_gray=True)
-    
+
     coordinate_temp = _coordinate_holder.copy()
     # print(_bounding_box_center)S
-    center= _bounding_box_center[0]
+
+    ##### creating three templates
+    xy_n = []
+    iter = 1
+    for center in _bounding_box_center:
+        xy= template_matching_extended(skeleton, center=center, iter=iter, size=100, show= False)
+        point = pixel_to_point(xy,df)
+        transformed_point = transform_point(robot_matrix, camera_matrix, point)
+        xy_n.append(transform_point)
+        iter +=1
+
+    save_point(xy_n, "template_point.csv") #saves the list of points as a csv
+
+
+
     # template, top_left, bot_right= create_template(image=skeleton, center=center, size= 100)
-    xy= template_matching_extended(skeleton, center=center, size=100, show= True)
-    point = pixel_to_point(xy,df)
-    transformed_point = transform_point(robot_matrix, camera_matrix, point)
-    save_point(transformed_point)
+    # xy= template_matching_extended(skeleton, center=center, size=100, show= True)
     #### manipulate the data from button clicks ####
 
     actual_coordinates= get_actual_cordinates(skeleton, coordinate_temp)
@@ -350,18 +397,10 @@ def main():
 
 
 
-    # output = do_subsample_extract_transform(df_sorted_lines_comb, df, robot_matrix, camera_matrix, angle_offset=15, chosen_point_distance=10, pose_as_quaternion_xyzw= True)
-    output = do_subsample_extract_transform(df_sorted_lines_comb, df, robot_matrix, camera_matrix, angle_offset=15, chosen_point_distance=10, pose_as_quaternion_xyzw= True)
-
-    out_df = pd.DataFrame(output)
-    out_df.to_csv("OUTPUT.csv", header = None, index = None)
+ 
 
 
-    """
-    TODO: make the poses into quaternions (add 0 in front or after?!!)
-    output it!!
-    
-    """
+
     # print("points:")
     # print(transformed_points)
 
@@ -369,8 +408,8 @@ def main():
 
     # print("poses:")
     # print(transformed_poses)
-    print("points, poses:")
-    print(output)
+    # print("points, poses:")
+    # print(output)
 
 
 
@@ -406,15 +445,42 @@ def main():
 
         #### TRANSFORMATION ####
 
-    df_sorted_lines1= df_transformation(matrix_rob=robot_matrix, matrix_cam= camera_matrix, points= df_sorted_lines1) #pos01, camera_matrix, df_sorted_lines1)
-    df_sorted_lines2= df_transformation(robot_matrix, camera_matrix, df_sorted_lines2)
-    df_sorted_lines_comb = pd.concat([df_sorted_lines1, df_sorted_lines2], axis=0, ignore_index=True)
+    # df_xyz = raw_to_xyz(df)
+    # FULL_PC_TRANS= df_transformation(matrix_rob=robot_matrix, matrix_cam= camera_matrix, points= df_xyz) #This should only be done for testing, takes 200 sec ish
+    # FULL_PC_TRANS.to_csv("PointCloud_transformed", header= None, index=None)
 
-    df_sorted_lines1.to_csv("weld_path1_transformed.csv", header = None, index = None)
-    df_sorted_lines2.to_csv("weld_path2_transformed.csv", header = None, index = None)
-    df_sorted_lines_comb.to_csv("weld_path_transformed.csv", header = None, index = None)
+
+    # df_transformed= pd.read_csv("PointCloud_transformed", sep = ',', header= None )
+    # df_transformed = raw_to_xyz(df_transformed)
+    # df_transformed = df_transformed.round(3)
+    # df_transformed.to_csv("PointCloud_transformed", header= None, index=None)
+
+
+    df_sorted_transformed_lines1= df_transformation(matrix_rob=robot_matrix, matrix_cam= camera_matrix, points= df_sorted_lines1) #pos01, camera_matrix, df_sorted_lines1)
+    df_sorted_transformed_lines2= df_transformation(robot_matrix, camera_matrix, df_sorted_lines2)
+    df_sorted_transformed_lines_comb = pd.concat([df_sorted_transformed_lines1, df_sorted_transformed_lines2], axis=0, ignore_index=True)
+
+    df_sorted_transformed_lines1.to_csv("weld_path1_transformed.csv", header = None, index = None)
+    df_sorted_transformed_lines2.to_csv("weld_path2_transformed.csv", header = None, index = None)
+    df_sorted_transformed_lines_comb.to_csv("weld_path_transformed.csv", header = None, index = None)
 
         #### end of transformation ####
+
+    # output = do_subsample_extract_transform(df_sorted_lines_comb, df, robot_matrix, camera_matrix, angle_offset=15, chosen_point_distance=10, pose_as_quaternion_xyzw= True)
+    output = do_subsample_extract_transform(df_sorted_lines_comb, raw_to_xyz(df).round(3), robot_matrix, camera_matrix, angle_offset=30, chosen_point_distance=40, pose_as_quaternion_xyzw= True)
+    # output = do_subsample_extract_transform(df_sorted_transformed_lines_comb.round(3), df_transformed, robot_matrix, camera_matrix, angle_offset=30, chosen_point_distance=40, pose_as_quaternion_xyzw= True)
+
+
+    out_df = pd.DataFrame(output)
+    out_df.to_csv("OUTPUT.csv", header = None, index = None)
+
+
+
+
+
+
+
+
     ####### time measurements
     end_time = time.time()
     print()

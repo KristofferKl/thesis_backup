@@ -5,10 +5,11 @@ import math
 from dataManipulation import raw_to_xyz
 from weld_detection_algorithm import subsample_points
 
-SUBSAMPLE_SIZE = 10 # number of pixels that wil be chosen for the subsampeled Pointcloud, a higher value means a bigger search-grid
-GRID_SPACING = 1
+# SUBSAMPLE_SIZE = 10 # number of pixels that wil be chosen for the subsampeled Pointcloud, a higher value means a bigger search-grid
+GRID_SPACING = 2
 
 PointCloud_size= (1944,1200)
+LastChangedPose_point_vector = []
 
 Pointcloud_input:list[list]
 points_input:list[list] #chosen points
@@ -60,7 +61,7 @@ def restructure_pointcloud(pointcloud:list[list], pc_shape:tuple[int])-> list[li
     return structured_pointcloud
 
 
-SUBSAMPLE_SIZE = SUBSAMPLE_SIZE//2 # this way the input declares the whole area
+# SUBSAMPLE_SIZE = SUBSAMPLE_SIZE//2 # this way the input declares the whole area
 
 def is_points_same(point1:list, point2:list):
     if point1[0] == point2[0] and point1[1] == point2[1] and point1[2] == point2[2]:
@@ -80,7 +81,8 @@ def get_index_of_point(point:list, Pointcloud:list[list[list]]) -> list:
         for i in range(np.shape(Pointcloud)[0]):
             if is_points_same(point, Pointcloud[i]):
                 return [i]
-                
+    else:
+        assert False, "Error, there was no points that could be matched to the input index in get_index_of_point, are you rounding?"
     return []
 
 
@@ -131,8 +133,7 @@ def get_3D_min_max(subsampeled_pointcloud:list[list[list]])->list:
 
 def drop_NaN(Pointcloud:list[list]): #this might only work on np.NaN objects, testing needed for the Zivid/Pandas NaN values
     """custom function to drop NaN values, as the whole point needs to be droped, not just the NaN-value
-        bad way of doing it, but it works,
-        volatile as it only checks the first value, could potentially be a problem based on the data
+        bad way of doing it as it only checks the first element, but it works for the zivid-output.
 
     Args:
         pointcloud (list[list]): subsampeled pointcloud
@@ -163,85 +164,205 @@ def rotation(axis, theta = 0.0): #Rotation metrix from axis and magnitude w, the
 def deg_to_rad(deg):
     return (deg/360)*2*np.pi
 
-def create_plane(point:list, vector:list, grid_spacing:float, input_distance:float):
-    """creates a set of evenly spaced points in a plane defined by the point and vector, with size = 2*grid_size and spacing = grid_spacing
+# def create_plane(point:list, vector:list, grid_spacing:int, input_distance:float):
+#     """creates a set of evenly spaced points in a plane defined by the point and vector, with size = 2*grid_size and spacing = grid_spacing
 
-    Args:
-        point (list): origin point
-        vector (list): normal vector
-        grid_size (int): gives the limit of the appointed points
-        grid_spacing (float): gives the spacing between the points
-    """
-    x,y,z = vector
-    x0, y0, z0 = point
-    area_limiter = 2 #
-    # print(f"{x, y, z = }")
-    # print(f"{x0, y0, z0 = }")
+#     Args:
+#         point (list): origin point
+#         vector (list): normal vector
+#         grid_size (int): gives the limit of the appointed points
+#         grid_spacing (float): gives the spacing between the points
+#     """
+#     area_limiter = 2 #this works when set to 2 but its slow, test for lower values also, 1 seems to work, it is about 25%faster than 2, but still slow
+    
+    
+#     x,y,z = vector
+#     x0, y0, z0 = point
+#     # print(f"{x, y, z = }")
+#     # print(f"{x0, y0, z0 = }")
 
-    plane_grid = []
-    # print(f"{point= }")
-    input_distance = int(input_distance)
-    lim_upper = int(input_distance//grid_spacing +area_limiter//grid_spacing)
-    lim_lower = int((input_distance//grid_spacing -area_limiter//grid_spacing)//2)
-    grid_limits = list(range(lim_lower, lim_upper))
-    # print(f"half of limits: {np.shape(grid_limits)}")
-    grid_limits.extend(list(range(-lim_upper, -lim_lower)))
-    # print(f"all of limits: {np.shape(grid_limits)}")
+#     plane_grid = []
+#     # print(f"{point= }")
+#     input_distance = int(input_distance)
+#     lim_upper = int(input_distance +area_limiter)
+#     lim_lower = int((input_distance -area_limiter))
+#     # grid_limits = list(range(lim_lower, lim_upper, grid_spacing))
+#     grid_limits = list(range(-lim_upper, lim_upper, grid_spacing))
+
+#     # print(f"half of limits: {np.shape(grid_limits)}")
+#     # grid_limits.extend(list(range(-lim_upper, -lim_lower, grid_spacing)))
+#     # print(f"all of limits: {np.shape(grid_limits)}")
 
 
-    # grid_size=int(grid_size//grid_spacing)
+#     # grid_size=int(grid_size//grid_spacing)
 
-    # print(f"actual gridsize: {grid_size}")
-    for i in grid_limits:
-        for j in grid_limits:
-            for k in grid_limits:
-                plane= [(i*x)/grid_spacing+x0, (j*y)/grid_spacing +y0, (k*z)/grid_spacing+z0]
-                plane_grid.append(plane)
-        # print(f" in point {i = } in grid")
-    print("done making grid")
-    return plane_grid
+#     # print(f"actual gridsize: {grid_size}")
+#     for i in grid_limits:
+#         for j in grid_limits:
+#             for k in grid_limits:
+#                 plane= [(i*x)+x0,(j*y)+y0, (k*z)+z0]
+#                 plane_grid.append(plane)
+#         # print(f" in point {i = } in grid")
+#     # print(plane)
+#     print("done making grid")
+#     plot_plane(plane_grid)
+#     return plane_grid
+    
+def create_plane2(original_point:list, normal_vector:list, radius:float):
+    #uncomment the imports if you want to plot
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.mplot3d import Axes3D
+
+    plane = []
+    #Create a circular mesh grid
+    #arbitrarily chosen 0.6 and 1.6 to create the hollow disc
+    # inner_r = radius*0.6
+    outer_r = radius*1.5
+
+    theta = np.linspace(0, 2 * np.pi, 600)
+    r = np.linspace(0, outer_r, 200)
+    theta, r = np.meshgrid(theta, r)
+
+    # Convert polar coordinates to Cartesian coordinates
+    x = r * np.cos(theta)
+    y = r * np.sin(theta)
+    z = np.zeros_like(x)
+
+
+    x += original_point[0]
+    y += original_point[1]
+    z += original_point[2]
+    z = original_point[2] - (normal_vector[0] * (x- original_point[0]) + normal_vector[1] * (y- original_point[1])) / normal_vector[2]
+
+    ###### This is only used for printing and plotting, removed for now
+    # Plot the plane
+        
+    x= np.reshape(x, (-1))
+    y= np.reshape(y, (-1))
+    z= np.reshape(z, (-1))
+
+    # print(f"{np.shape(x)= }")
+    # print(f"{np.shape(y)= }")
+    # print(f"{np.shape(z)= }")
+    # print(x)
+    print(f"{radius = }")
+    for i in range(len(x)):
+        current_point=[x[i], y[i], z[i]]
+        point_dist = np.linalg.norm(np.array(current_point) - np.array(original_point))
+        if point_dist <= radius*1.02 and point_dist>= radius*0.98:
+            plane.append(current_point)
+    
+    plane= np.array(plane)
+
+    # fig = plt.figure()
+    # ax = fig.add_subplot(111, projection='3d')
+
+    # # # ax.plot_surface(x, y, z, color='b', alpha=0.5)
+
+    # # # Plot the point on the plane
+    # ax.scatter(original_point[0], original_point[1], original_point[2], color='r', s=100)
+
+    # ax.scatter(plane[:,:1], plane[:,1:2], plane[:,2:], color='b', s=1)
+
+    # # Set labels
+    # ax.set_xlabel('X')
+    # ax.set_ylabel('Y')
+    # ax.set_zlabel('Z')
+    # plt.show()
+
+    return plane
+
 
 def subsample_pointcloud(pointcloud:list[list[list]], point:list, chosen_point_distance:float):
     import matplotlib.pyplot as plt
+
+    # n=4
     index_point = get_index_of_point(point=point, Pointcloud= pointcloud)
     y0,x0= index_point
+    first_box = 140
     assert len(index_point), "no index found for the current point"
-    print(f"{point, pointcloud[y0, x0]= }")
-    dist = 0
-    itery = 1
-    # print(f"{np.linalg.norm(point - pointcloud[y0+1, x0]) = }")
-    while dist < chosen_point_distance: #traverse in column-direction
-        dist = np.linalg.norm(point - pointcloud[y0+itery, x0])
-        # print(f"{dist = }")
-        itery+=1
+    # print(f"{point, pointcloud[y0, x0]= }")
+    # dist = 0
+    # itery = 1
+    # # print(f"{np.linalg.norm(point - pointcloud[y0+1, x0]) = }")
+    # while dist < chosen_point_distance: #traverse in column-direction
+    #     dist = np.linalg.norm(point - pointcloud[y0+itery, x0])
+    #     # print(f"{dist = }")
+    #     itery+=1
 
-    iterx = 1
-    dist = 0
-    while dist < chosen_point_distance: #traverse in row-direction
-        dist = np.linalg.norm(point - pointcloud[y0, x0+iterx])
-        # print(f"{dist = }")
-        iterx+=1
-    print(f"{itery, iterx = }")
+    # iterx = 1
+    # dist = 0
+    # while dist < chosen_point_distance: #traverse in row-direction
+    #     dist = np.linalg.norm(point - pointcloud[y0, x0+iterx])
+    #     # print(f"{dist = }")
+    #     iterx+=1
+    # # print(f"{itery, iterx = }")
 
-    avg_dist_pixels = (iterx + itery)//2 
-    print(f"{avg_dist_pixels = }")
-    diff_dist_pixels = abs(iterx - itery)
-    d=avg_dist_pixels + 2*diff_dist_pixels
+    # avg_dist_pixels = (iterx + itery)//2 
+    # # print(f"{avg_dist_pixels = }")
+    # diff_dist_pixels = abs(iterx - itery)
+    # d=avg_dist_pixels + n*diff_dist_pixels
+    pointcloud = pointcloud[max(0, y0-first_box): min(PointCloud_size[0], y0+first_box), 
+                            max(0, x0-first_box): min(PointCloud_size[1], x0+first_box)]
+
     subsample=[]
     
-    img = np.zeros_like(pointcloud)
+    # img = np.zeros_like(pointcloud)
+    ######################################################
+    d = chosen_point_distance
+    print(f"{d= }")
 
+    #find all points within distance d from the original point
+    def find_points_within_distance(pointcloud, original_point, distance):
+        points_within_distance = []
+        for i in range(pointcloud.shape[0]):
+            for j in range(pointcloud.shape[1]):
+                point = pointcloud[i][j]
+                point_dist = np.linalg.norm(point - original_point)
+                if point_dist <= distance*1.02 and point_dist>= distance*0.98:
+                    points_within_distance.append(point)
+        return points_within_distance
+
+    # Find points within the set distance
+    subsample = find_points_within_distance(pointcloud, point, d)
+    subsample = np.array(subsample)
+##############################################################################
     #find all pixels within a circle around the selected point
-    for y in range(int(max(0,index_point[0] - d)), int(min(np.shape(pointcloud)[0] - 1,index_point[0] + d))):
-        for x in range(int(max(0,index_point[1] - np.sqrt(d**2 - (y -index_point[0])**2))), 
-                       int(min(np.shape(pointcloud)[1] - 1,index_point[1] + np.sqrt(d**2 - (y -index_point[0])**2)))):
-            subsample.append(pointcloud[y,x])
-            img[y, x] = [1,1,1]
-        
+    # for y in range(int(max(0,index_point[0] - d)), int(min(np.shape(pointcloud)[0] - 1,index_point[0] + d))):
+
+    #     for x in range(int(max(0,index_point[1] - np.sqrt(d**2 - (y -index_point[0])**2))), 
+                       
+    #                    int(min(np.shape(pointcloud)[1] - 1,index_point[1] + np.sqrt(d**2 - (y -index_point[0])**2)))):
+    #         subsample.append(pointcloud[y,x])
+    #         # img[y, x] = [1,1,1]
+    # subsample= np.array(subsample)
     # plt.imshow(img)
     # plt.show()
-    # print(np.array(subsample))
-    return np.array(subsample)
+    # print(np.array(subsample))   abba[:,2:3]
+
+########################## plotting
+
+    # x= subsample[:,:1]
+    # y= subsample[:,1:2]
+    # z= subsample[:,2:]
+
+    # # print(x)
+
+    # fig = plt.figure()
+    # ax = fig.add_subplot(111, projection='3d')
+
+    # ax.scatter(x, y, z, color='b', s=1)
+    # # ax.plot_surface(x, y, z, color='b', alpha=0.5)
+
+    # # Plot the point on the plane
+
+    # # Set labels
+    # ax.set_xlabel('X')
+    # ax.set_ylabel('Y')
+    # ax.set_zlabel('Z')
+    # plt.show()
+
+    return subsample
 
 
 def choose_first_point(points:list[list], dist:float= 50):
@@ -283,10 +404,11 @@ def get_most_similar_points(grid:list[list], pointcloud:list[list[list]], thresh
     chosen_points = []
     if len(np.shape(pointcloud))==3:
         pointcloud = np.reshape(pointcloud, (-1,3)) #flattens the subsampeled pointcloud as we dont need the shape anymore
+
     pointcloud = drop_NaN(pointcloud)
-    print("flattened and dropped nans")
-    print(f"{np.shape(grid)= }  ")
-    print(f"{np.shape(pointcloud)= }")
+    # print("flattened and dropped nans")
+    # print(f"{np.shape(grid)= }  ")
+    # print(f"{np.shape(pointcloud)= }")
     for pc_point in pointcloud:
         for grid_point in grid:
             if np.linalg.norm(grid_point-pc_point) <= threshold:
@@ -299,10 +421,11 @@ def get_most_similar_points(grid:list[list], pointcloud:list[list[list]], thresh
 
 def get_mapping_points(origin_point:list, points:list[list], input_distance:float):
     assert np.shape(points)[0] >= 2, "Error, to few points were extracted from the previous steps"
-    most_similar= []
+    # most_similar= []
+    most_similar = points
     selected_points = []
-
-    min_distance = 0.5 #arbitrary high value, code farther down can be uncommented to make this a educated guess, but it is not very usefull
+    min_distance = input_distance*0.2 
+    # min_distance = 0.5 #arbitrary high value, code farther down can be uncommented to make this a educated guess, but it is not very usefull
     n = 2
     #check points to see the minimum distance between them:
     #innefective way of doing it, but fast to code, should be relatively few points to calculate this for
@@ -318,21 +441,35 @@ def get_mapping_points(origin_point:list, points:list[list], input_distance:floa
     # if min_distance >= 999.99:
     #     min_distance = 0.5
 
-    for point in points:
-        dist =np.linalg.norm(point-origin_point) #calculates the distance between the current point and the chosen point
-        if dist <= input_distance + n*min_distance  and dist >= input_distance - n*min_distance: #check if between the chosen points, the n* distance is somewhat arbitrary
-            most_similar.append(point)
 
+    # for point in points:
+    #     dist =np.linalg.norm(point-origin_point) #calculates the distance between the current point and the chosen point
+    #     if dist <= input_distance + n*min_distance  and dist >= input_distance - n*min_distance: #check if between the chosen points, the n* distance is somewhat arbitrary
+    #         most_similar.append(point)
+
+
+    print(f"Number of points that made it to the second to last test: {np.shape(most_similar)[0]}")
+    # print(f"{most_similar= }")
     #choose last two points,
+
+    min_angle_rad_90 = 2*3.14
     for point_a in most_similar:
         for point_b in most_similar:
             if is_points_same(point_a, point_b):
                 continue
             dist =np.linalg.norm(point_a-point_b)
-            if dist >= input_distance: #make shure the points are on different planes
-                selected_points = [point_a, point_b] #choose the first pair odf points that satisfies the conditions
-                break
+
+            vec1 = point_a- origin_point
+            vec2 = point_b- origin_point
+            angle_rad= 2*np.arctan(absolute(absolute(vec2)*vec1 - absolute(vec1)*vec2)/
+                                    absolute(absolute(vec2)*vec1 + absolute(vec1)*vec2)) # new version, complements to William Kahan's formulas
+
+            if dist >= np.sqrt(2*((input_distance*0.9)**2)) and (abs(angle_rad-np.pi/2)< abs(min_angle_rad_90-np.pi/2)): #make shure the points are on different planes
+                min_angle_rad_90 = angle_rad
+                selected_points = [point_a, point_b]
+
     assert len(np.shape(selected_points)), "Error, no two points were possible to select satisfying the requirements"
+    assert np.shape(selected_points)[0] == 2, f"Error, inly one point was chosen in the in get_mapping_points {np.shape(selected_points) = }"
     return selected_points
 
 
@@ -356,42 +493,148 @@ def get_pose(point:list, PointCloud:list[list[list]], vector:list, angle_offset:
 
     sub_cloud = subsample_pointcloud(PointCloud, point, chosen_point_distance)
     #get the maximum size of the sampeled area, makes sure all points within this area is taken into account
-    # # print(sub_cloud)
-    # min, max = get_3D_min_max(sub_cloud)
-    # print(f"{max, min = }")
-    # grid_size =np.max(max-min)
-    # print(f"{grid_size= }")
-    # #this is only for testing
-    # grid_size = 10 #!!!!!!!!!!!!!!
-    #......
-    plane_grid = create_plane(point=point, vector=vector, grid_spacing=GRID_SPACING, input_distance= chosen_point_distance)
+    plane_grid = create_plane2(point, vector, chosen_point_distance)
     print("get_most_similar_points()")
-    intersection_points= get_most_similar_points(grid=plane_grid, pointcloud=sub_cloud, threshold=0.5)
+    intersection_points= get_most_similar_points(grid=plane_grid, pointcloud=sub_cloud, threshold=0.4)
     print("get_mapping_points()")
     chosen_points = get_mapping_points(point, intersection_points, chosen_point_distance)
     #calculate the pose
 
 
     # current_vec = vectors[0] #get the first vector from the
+
     middle_pos= mean(chosen_points[0], chosen_points[1]) #works with both array an numpy-array (for numpy this is overkill tho)
-    first_pose_vec = middle_pos - point
+    first_pose_vec = middle_pos - point #removed the mean-part as it could potentially cause problems
+    first_pose_vec /=absolute(first_pose_vec)
+
+
+    ######################### work on this!!!!!!! ############################################
+
     #rotate the extracted pose around the axis
+    vec_axis = vector/absolute(vector)
+    # first_pose_vec = rotation(vec_axis, np.pi/2+np.pi/10) @ first_pose_vec
+    # first_pose_vec = rotation(vec_axis, np.pi*(1/4 + 1/8)) @ first_pose_vec
+
     rotation_axis= np.cross(vector, first_pose_vec )
+    rotation_axis /= absolute(rotation_axis) #normalize tha axis
     angle_offset_rad = deg_to_rad(angle_offset)
-    pose_inv = -rotation(rotation_axis, angle_offset_rad) @ first_pose_vec #NOTE make sure this rotates the correct way (pre/post multiplication and sign of rotation)
+
+    pose =  rotation(rotation_axis, angle_offset_rad) @ first_pose_vec #NOTE make sure this rotates the correct way (pre/post multiplication and sign of rotation)
     #reversing the pose as it is pointing out of the workpiece
-    pose= pose_inv # add the negative sign if end-effetor is pointing the wrong way, its supposed to be needed 
+    # pose= -np.array(pose) # add the negative sign if end-effetor is pointing the wrong way, its supposed to be needed 
     pose = pose/absolute(pose)
+
+    # vec_axis = vector/absolute(vector)
+    # middle_pos = rotation(vec_axis, np.pi/4 -np.pi) @ middle_pos
+
+
+    ################################printing and stuff
+    print(f"")
+    # print(f"{chosen_points = }")
+    # print(f"{point = }")
+    vec1 = chosen_points[0]- point
+    vec2 = chosen_points[1]- point
+    # print(f"{vec1= }")
+    # print(f"{vec2= }")
+    # print(f"{first_pose_vec= }")
+    angle_rad= 2*np.arctan(absolute(absolute(vec2)*vec1 - absolute(vec1)*vec2)/
+                           absolute(absolute(vec2)*vec1 + absolute(vec1)*vec2)) # new version, complements to William Kahan's formulas
+    angle_deg_90 = 360* angle_rad/(2*np.pi)
+    print(f"{angle_deg_90 = }")
+    angle_rad= 2*np.arctan(absolute(absolute(first_pose_vec)*vec1 - absolute(vec1)*first_pose_vec)/
+                           absolute(absolute(first_pose_vec)*vec1 + absolute(vec1)*first_pose_vec))
+    angle_deg_mid = 360* angle_rad/(2*np.pi)
+    print(f"{angle_deg_mid = }")
+
+
     print("returning pose")
     print(f"{pose = }")
-    return pose
+    print(f"")
+
+    Plot = True
+    #######################
+    if Plot:
+        import matplotlib.pyplot as plt
+
+        # n=4
+        index_point = get_index_of_point(point=point, Pointcloud= PointCloud)
+        y0,x0= index_point
+        first_box = 140
+        assert len(index_point), "no index found for the current point"
+
+        subsample = PointCloud[max(0, y0-first_box): min(PointCloud_size[0], y0+first_box), 
+                                max(0, x0-first_box): min(PointCloud_size[1], x0+first_box)]
+
+
+        subsample = np.reshape(subsample, (-1,3))
+
+        subsample = np.array(subsample)
+
+
+
+        # pose_0 = first_pose_vec
+        pose_0 = pose
+
+
+        point0 = point
+        size=100
+        point1 = [point[0] + pose_0[0]*size, point[1] + pose_0[1]*size, point[2] + pose_0[2]*size]
+        x1 = np.linspace(point0[0], point1[0], num= 30)
+        y1 = np.linspace(point0[1], point1[1], num= 30)
+        z1 = np.linspace(point0[2], point1[2], num= 30)
+
+
+####    ##########################################################################
+        x= subsample[:,:1]
+        y= subsample[:,1:2]
+        z= subsample[:,2:3]
+
+        print(np.shape(x))
+        print(np.shape(y))
+
+        print(np.shape(z))
+
+        # print(x)
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+
+        ax.scatter(x1, y1, z1, color='r', s=50)
+        ax.scatter(x, y, z, color='b', s=1, alpha=0.5)
+
+
+
+        # ax.plot_surface(x, y, z, color='b', alpha=0.5)
+
+        # Plot the point on the plane
+
+        # Set labels
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        plt.show()
+
+    # return pose
+    return -np.array(first_pose_vec)
+
+
 
 def change_pose(pose, current_vec, next_vec):
     """ Changes the selected pose based on the vector for the next points, should not be a big change on a "straight line"
 
     """
-    
-    #potentially big numerical errordue to rounding/normalizing if the vectors are almost alligner or allmost 90 degrees on each other du to division (cross or dot product =0)
+    global LastChangedPose_point_vector
+
+    # if len(LastChangedPose_point_vector) != 0 :
+    #     current_vec= LastChangedPose_point_vector
+    #     print(LastChangedPose_point_vector)
+ #this is used to change the functionality to only operate on the actual change in the pose-orientation
+    if len(LastChangedPose_point_vector)== 0:
+        LastChangedPose_point_vector = current_vec
+    current_vec = LastChangedPose_point_vector
+
+
+    #potentially big numerical error due to rounding/normalizing if the vectors are almost alligner or allmost 90 degrees on each other du to division (cross or dot product =0)
     current_vec = np.array(current_vec)
     next_vec = np.array(next_vec)
     pose = np.array(pose)
@@ -402,19 +645,33 @@ def change_pose(pose, current_vec, next_vec):
     current_vec = current_vec/absolute(current_vec)
     next_vec = next_vec/absolute(next_vec)
     # print(f"{current_vec, next_vec =}")
-
-    angle_rad= np.abs(np.arcsin(absolute(np.cross(current_vec, next_vec))))
+    # print()
+    # angle_rad= np.abs(np.arcsin(absolute(np.cross(current_vec, next_vec)))) #old version, more prone to errors
+    # print(f"{angle_rad = }")
+    angle_rad= 2*np.arctan(absolute(absolute(next_vec)*current_vec - absolute(current_vec)*next_vec)/
+                           absolute(absolute(next_vec)*current_vec + absolute(current_vec)*next_vec)) # new version, complements to William Kahan's formulas
+    # print(f"{angle_rad = }")
+    
     angle_deg = 360* angle_rad/(2*np.pi)
+    # print(f"{angle_deg = }")
     # axis = np.cross(current_vec, pose)/absolute(np.cross(pose, current_vec)) #normalizing the axis vector
 
     # if absolute(np.cross(current_vec, next_vec)) == 0: #original version, this could be implemented if there are curves on the workpiece (welding a circle etc, only introduces errors for our case)
-    if absolute(np.cross(current_vec, next_vec)) <= 0.60: # a little less than 45 degrees angle
-    
+    # if absolute(np.cross(current_vec, next_vec)) <= 0.60: # a little less than 45 degrees angle
+    if abs(angle_deg) <= 80: # hvis mindre enn x grader, ikke forandre
         return pose
     else:
-        axis = np.cross(current_vec, next_vec)/absolute(np.cross(current_vec, next_vec))
-        new_pose=  rotation(axis, angle_deg) @ pose# NOTE the negative sign is there based on the sequence in which
+        
+        axis = np.cross(current_vec, next_vec)/absolute(np.cross(current_vec, next_vec)) #henter akse og normaliserer den
+        # sign = list(map(lambda x: np.sign(x), axis))
+        # print(sign)
+        # print(f"{angle_deg = }")
+        print(f"Changing the pose")
+        # new_pose=  rotation(axis, angle_rad) @ pose# NOTE the negative sign is there based on the sequence in which #original
+        new_pose=  rotation(axis, angle_rad) @ pose# NOTE the negative sign is there based on the sequence in which
+
         new_pose_normalized = new_pose/absolute(new_pose)
+        LastChangedPose_point_vector = next_vec
         #maby normalize?
         return new_pose_normalized
 
@@ -428,7 +685,7 @@ def change_pose(pose, current_vec, next_vec):
 
 
 
-def subsample_path_and_estimate_poses(path_df, PointCloud_in:list[list], angle_offset:int= 15, chosen_point_distance:float= 10):
+def subsample_path_and_estimate_poses(path_df, PointCloud_in:list[list], angle_offset:int= 15, chosen_point_distance:float= 40):
     poses = []
     """ Calculates the end-effector pose for a welding path based on the surounding walls and end-effectors movement-vector
 
@@ -461,9 +718,9 @@ def subsample_path_and_estimate_poses(path_df, PointCloud_in:list[list], angle_o
 
 
     #get the pose
-    starting_point_index = choose_first_point(points, 50)
+    starting_point_index = choose_first_point(points, 15)
     pose= get_pose(points[starting_point_index], PointCloud, vectors[starting_point_index], angle_offset=angle_offset, chosen_point_distance=chosen_point_distance)
-
+    # plot_pose_context(PointCloud, points[starting_point_index], vectors[starting_point_index], chosen_point_distance,30 )
     # assumes the same pose for the beginning
     for i in range(starting_point_index+1):
         poses.append(pose)
@@ -502,8 +759,10 @@ def main():
 #    print(np.array(subsample))
     # print(f"{np.array(vectors)= }")
 #    print(f"{len(subsample)= }, {len(vectors) = }")
-    poses= np.array(subsample_path_and_estimate_poses(df, PC, 15, 10))
-    print(f"{poses = }")
+    points, poses= np.array(subsample_path_and_estimate_poses(df, PC, angle_offset=30, chosen_point_distance=40))
+    # print(f"{points = }")
+
+    # print(f"{poses = }")
 
     return
 
