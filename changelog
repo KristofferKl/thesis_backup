@@ -1,0 +1,51 @@
+log
+
+changed .xml file entry from warehouse_..._mongo to warehouse_..._sqlite
+
+sjekk: motoros 2_interface versjonen, evt motoros_versjonen....
+
+changing all instances of "warehouse_ros_mongo" to warehouse_ros_sqlite
+
+undoing: changing all instances of "warehouse_ros_mongo" to warehouse_ros_sqlite
+note: this did not fix the problem with RViz having both sqlite and mongo listed....
+
+build: ~/ws_master$ colcon build   --mixin release   --packages-up-to motoros2_client_interface_dependencies
+this was used to build parts of the workspace, not necesary anymore
+
+When activating the servos for Motoros: the first time they are activated (in each session) the teach-pendant/start cell button were used, some more testing is needed to say with certainty.
+
+disabled dependencies for modern robotics in src/jacobian_generator/package.xml
+disabled dependencies for moveit_core/trajectory_processing in src/moveit_group_planner/package.xml
+
+TODO: attempting to convert from ros_warehouse_mongo to ros_warehouse_sqlite NOTE: not completed, change this when/if it is done
+NOTE: use "rosdep install --skip-keys=warehouse_ros_mongo  --from-paths src --ignore-src" to run "rosdep install" despite mongo not being supported
+
+Edited the line in /home/zivid/ws_master/src/moveit2/moveit_configs_utils/moveit_configs_utils/launches.py:
+	from this:
+            "capabilities",
+            default_value=moveit_config.move_group_capabilities["capabilities"],
+        to this:
+            "capabilities",
+            default_value=moveit_config.move_group_capabilities,
+seems to have solved the KeyError "capabilities" problem
+
+the problem with joint_states not being published is realted to the YRC1000, and according to motoros2 github it is occuring due to unknown reasons because of the group-combination
+
+
+Solution:::::
+	created new node that combines all four joint-trajectories and publishes them on /joint_states
+	
+	
+NOTE: group 4 (the workbench) is defined with negative velues all rotations are on oposite directions compared to what is visualized in RViz !!!
+
+Problem with waypoint_publisher: when our new node group_topic_combiner_node is publishing, waypoint_publisher rarely works
+
+
+Removed workpiece by editing the files: /home/zivid/ws_master/src/motoman/motoman_gp25sys_support/urdf/gp25sys.urdf 
+and /home/zivid/ws_master/src/motoman/motoman_gp25sys_support/urdf/gp25sys.xacro 
+and /home/zivid/ws_master/src/robco/config/motoman_gp25sys.srdf
+to not have any more dependencies on the workpiece.
+
+in the urdf and xacro the workpiece link and workpiece joint were commented out
+In the srdf all collision-checks with the workpiece were commented out
+
