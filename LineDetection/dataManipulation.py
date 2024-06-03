@@ -5,7 +5,9 @@ import pandas as pd
 import numpy as np
 from PIL import Image
 import skimage as ski
+from scipy import ndimage as ndi
 from run2 import run_hed
+
 image_size = [1944, 1200]
 # from skimage.morphology import skeletonize
 
@@ -110,8 +112,6 @@ def df_thresholding_hed(df_hed:pd.DataFrame, threshold:int = 155, to_binary:bool
     # df_hed = df_hed.drop(df_hed[df_hed.values <= threshold].index)
     return df_hed
 
-def img_thresholding_hed(image:img, threshold:int = 155, to_binary:bool = False):
-    return
 
 
 def filter_df_by_df(df:pd.DataFrame, df_filter:pd.DataFrame, remove_na:bool = True)-> pd.DataFrame:
@@ -200,7 +200,7 @@ def df_to_image(df:pd.DataFrame, size:np.array): #needs to add color or no_color
     return image
 
 
-def skeletonizing_ed(image_path:str = "/home/zivid/pytorch_env/out.png", threshold:int = 140, save:bool= True): #100 in threshold has previously been used as a baseline
+def skeletonizing_ed(image_path:str = "/home/zivid/pytorch_env/out.png", threshold:int = 140, save:bool= True, name_str="HED"): #100 in threshold has previously been used as a baseline
     """
     threshold is for now simply manually set to reduce background noise.
     returns the thresholded and skeletonized image
@@ -210,7 +210,7 @@ def skeletonizing_ed(image_path:str = "/home/zivid/pytorch_env/out.png", thresho
     # thresh_otsu = ski.filters.threshold_otsu(image2)
     skeleton = ski.morphology.skeletonize(image_thresh)
     if save:
-        ski.io.imsave("thresholded_HED.png", ski.util.img_as_ubyte(image_thresh))
+        ski.io.imsave("thresholded_" + name_str + ".png", ski.util.img_as_ubyte(image_thresh))
         ski.io.imsave("skeleton.png", ski.util.img_as_ubyte(skeleton))
     return skeleton
 
@@ -233,6 +233,34 @@ def get_skeletonized_image_from_pointcloud(df:pd.DataFrame, image_size:list, ima
     image= get_color_img_from_df(df = df, image_size=image_size, save= True, save_image_name=image_name_in)
     skel_path = run_hed(args_strIn=image_name_in)
     skeleton= skeletonizing_ed(image_path=skel_path, threshold=threshold)
+
+def canny(image_name_in):
+    # Generate noisy image of a square
+    # image = np.zeros((128, 128), dtype=float)
+    # image[32:-32, 32:-32] = 1
+    image = ski.io.imread(image_name_in, as_gray=True)
+
+    # image = ndi.rotate(image, 15, mode='constant')
+    # image = ndi.gaussian_filter(image, 4) # its already included
+    # image = random_noise(image, mode='speckle', mean=0.1)
+
+    # applying canny with gaussian sigma = 1, 3, 5
+    max_val = np.amax(np.array(image))
+    edges1 = ski.feature.canny(image, sigma=0.6, low_threshold=0.2*max_val, high_threshold=0.3*max_val) # hysteresis thresholding
+    # edges2 = ski.feature.canny(image, sigma=0.7, low_threshold=0.2*max_val, high_threshold=0.3*max_val)
+    # edges3 = ski.feature.canny(image, sigma=0.8, low_threshold=0.2*max_val, high_threshold=0.3*max_val)
+    # edges4 = ski.feature.canny(image, sigma=0.9, low_threshold=0.2*max_val, high_threshold=0.3*max_val)
+
+    ski.io.imsave("canny_sigma06-02.png", edges1)
+    # ski.io.imsave("canny_sigma07-02.png", edges2)
+    # ski.io.imsave("canny_sigma08-02.png", edges3)
+    # ski.io.imsave("canny_sigma09-02.png", edges4)
+    return ["canny_sigma1.png", "canny_sigma1.png", "canny_sigma3.png", "canny_sigma5.png"]
+
+def get_skeletonized_image_from_pointcloud_canny(df:pd.DataFrame, image_size:list, image_name_in:str, save:bool=True, threshold =100):
+    image= get_color_img_from_df(df = df, image_size=image_size, save= True, save_image_name=image_name_in)
+
+    skel_path = canny(image_name_in)#run_hed(args_strIn=image_name_in)
 
 def sort_linesegments(line1:pd.DataFrame, line2:pd.DataFrame):
     """
@@ -328,8 +356,7 @@ def df_translation(vector:list, points:pd.DataFrame) -> pd.DataFrame:
     return points
 
 # Convert degrees to radians
-def deg2rad(deg):
-    return deg * np.pi / 180.0
+
 
 # Function to prompt user for input
 # def get_input(prompt):
@@ -381,13 +408,18 @@ def screw_to_homogeneus(screw:np.array):
     is given as a vector of rotation and then translation
     where the rotation is in degrees, NOT radians!!
     """
-    rotation_x_deg= screw[0]
-    rotation_y_deg= screw[1]
-    rotation_z_deg= screw[2]
+    def deg2rad(deg):
+        return deg * np.pi / 180.0
 
-    position_x= screw[3]
-    position_y= screw[4]
-    position_z= screw[5]
+    position_x= screw[0]
+    position_y= screw[1]
+    position_z= screw[2]
+
+    rotation_x_deg= screw[3]
+    rotation_y_deg= screw[4]
+    rotation_z_deg= screw[5]
+
+
 
     rotation_x = deg2rad(rotation_x_deg)
     rotation_y = deg2rad(rotation_y_deg)
@@ -411,7 +443,7 @@ def screw_to_homogeneus(screw:np.array):
     T[:3, :3] = R
     T[:3, 3] = [position_x, position_y, position_z]
 
-    return T
+    return np.array(T)
 ######## T-END ###############
 
 
@@ -428,12 +460,12 @@ def create_bounding_box(center:list, size:int=None):
     bot_right= [min(x+size, image_size[0]-1), min(y+size, image_size[1]-1)]
     return top_left, bot_right
 
-def create_template(image:np.ndarray, center:list, size:int=None):
+def create_template(image:np.ndarray, center:list, iter,  size:int=None):
     top_left, bot_right= create_bounding_box(center= center, size=size)
     print(f"top_left: {top_left}")
     print(f"bot_right: {bot_right}")
     template = image[top_left[1]: bot_right[1], top_left[0]:bot_right[0]]
-    ski.io.imsave("template.png", template)
+    ski.io.imsave("template"+str(iter) + ".png", template)
     return template
 
 #########  Bounding Box End  ##########
@@ -445,8 +477,8 @@ def match_template(template:np.array, image:np.array) -> list[int]:
     x, y = ij[::-1]
     return [x,y]
 
-def template_matching_extended(image:np.ndarray, center:list, size:int=None, show:bool=False):
-    template= create_template(image=image, center=center, size=size)
+def template_matching_extended(image:np.ndarray, center:list, iter:str, size:int=None, show:bool=False):
+    template= create_template(image=image, center=center, iter=iter, size=size)
     result = ski.feature.match_template(image, template=template, pad_input=True)
     result[result<0]=0
     result= result*255
@@ -456,7 +488,8 @@ def template_matching_extended(image:np.ndarray, center:list, size:int=None, sho
     # back_y, back_x= backboard.shape
     # backboard[template_y//2: back_y-template_y//2, template_x//2: back_x-template_x//2]=result
     # backboard[top_left[1]: bot_right[1], top_left[0]:bot_right[0]]
-    ski.io.imsave("template_result.png", result)
+
+    # ski.io.imsave("template_result"+str(iter)+".png", result) dosent show anything usefull unless plotted
     ij = np.unravel_index(np.argmax(result), result.shape)
     x, y = ij[::-1]
     if show:
@@ -524,9 +557,9 @@ def pixel_to_transformed_point(pixel:list, df:pd.DataFrame, matrix_rob:np.ndarra
     return transform_point(matrix_rob=matrix_rob, matrix_cam=matrix_cam, point=point)[0]
     
 
-def save_point(point:list):
+def save_point(point:list, name:str= "template_point.csv"):
     df= pd.DataFrame(point)
-    df.to_csv("template_point.csv", header = None, index = None)
+    df.to_csv(name, header = None, index = None)
     return
 
         #### FUNCTIONS FOR SECOND PART OF THE TEMPLATE MATCHING ####
@@ -556,30 +589,67 @@ def load_template(template_path:str="template.png") -> np.ndarray:
 def offset_vec_from_points(point1:list[int], point2:list[int]) -> list[int]:
     return [p2 - p1 for p2, p1 in zip(point2, point1)]
 
+# def apply_template_matching_automation(skel_image:np.array, 
+#                                        path_paths:list[str], 
+#                                        df:pd.DataFrame, 
+#                                        matrix_rob:np.ndarray, 
+#                                        matrix_cam:np.ndarray) -> None : #This does currently not work due to what used to be one template point has been changed to 3.
+#     """
+#     path_paths is a list with each element being the path to a csv file, containing the welding path to be offset_compensated
+#     """
+#     saved_point= load_point("template_point.csv")
+#     print(f"{saved_point = }")
+#     template= load_template("template.png")
+#     new_pixel= match_template(template=template, image=skel_image)
+#     new_point= pixel_to_transformed_point(new_pixel, df=df, matrix_rob=matrix_rob, matrix_cam=matrix_cam)
+#     print(f"{new_point = }")
+#     offset_vec= offset_vec_from_points(point1=saved_point, point2=new_point)
+#     print(f"{offset_vec = }")
+#     for path_name in path_paths:
+#         weld_path= pd.read_csv(path_name, header=None)
+#         weld_path_new= df_translation(vector=offset_vec,points=weld_path)
+#         weld_path_new.to_csv("offest_" + path_name, header=None, index=None)
+
+#         # weld_path= translation
+
+
 def apply_template_matching_automation(skel_image:np.array, 
-                                       path_paths:list[str], 
+                                       template_path_paths: list[str],
+                                       weld_path_paths:list[str], 
                                        df:pd.DataFrame, 
                                        matrix_rob:np.ndarray, 
-                                       matrix_cam:np.ndarray) -> None :
+                                       matrix_cam:np.ndarray) -> None : #This does currently not work due to what used to be one template point has been changed to 3.
     """
-    path_paths is a list with each element being the path to a cav file, containing the welding path to be offset_compensated
+    path_paths is a list with each element being the path to a csv file, containing the welding path to be offset_compensated
     """
-    saved_point= load_point("template_point.csv")
-    print(f"{saved_point = }")
-    template= load_template("template.png")
-    new_pixel= match_template(template=template, image=skel_image)
-    new_point= pixel_to_transformed_point(new_pixel, df=df, matrix_rob=matrix_rob, matrix_cam=matrix_cam)
-    print(f"{new_point = }")
-    offset_vec= offset_vec_from_points(point1=saved_point, point2=new_point)
+    saved_points= load_point("template_point.csv")
+    print(f"{saved_points = }")
+
+
+    # template0= load_template("template0.png")
+    # template1= load_template("template1.png")
+    # template2= load_template("template2.png")
+
+    templates = []
+    new_points = []
+    for i in range(len(template_path_paths)):
+        template = load_template(template_path_paths[i])
+        templates.append(template)
+        new_pixel = match_template(template=template, image=skel_image)
+        new_points.append(pixel_to_transformed_point(new_pixel, df=df, matrix_rob=matrix_rob, matrix_cam=matrix_cam))
+
+
+    print(f"{new_points = }")
+
+    offset_vec= offset_vec_from_points(point1=saved_points[1], point2=new_points[1]) #this is the offset for the middle point, might be useless
     print(f"{offset_vec = }")
+
     for path_name in path_paths:
         weld_path= pd.read_csv(path_name, header=None)
         weld_path_new= df_translation(vector=offset_vec,points=weld_path)
         weld_path_new.to_csv("offest_" + path_name, header=None, index=None)
 
         # weld_path= translation
-
-
 
 #########  Template Matching end #########
 
