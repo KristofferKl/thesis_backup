@@ -614,8 +614,8 @@ def get_pose(point:list, PointCloud:list[list[list]], vector:list, angle_offset:
         ax.set_zlabel('Z')
         plt.show()
 
-    # return pose
-    return -np.array(first_pose_vec)
+    return -np.array(pose)
+    # return -np.array(first_pose_vec)
 
 
 

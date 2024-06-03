@@ -121,7 +121,7 @@ def do_subsample_extract_transform(extracted_df, pointcloud, robot_matrix, camer
         comb.append(placeholder)
     
 
-    if False:
+    if True:
         fac = 10
         x1,y1,z1,x,y,z,w = [],[],[],[],[],[],[]
         for i in comb:
@@ -196,7 +196,20 @@ pos04= np.array([
     [8.46113173e-01, 5.88271573e-02, -5.29746982e-01, -6.92896000e+02],
     [0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 1.00000000e+00]])
 
-robot_matrix = pos04  #robot arm position
+
+
+
+
+
+
+#  this wil be used!!
+screw= np.array([726.673, 275.958, -601.059, 168.9588, -50.7845, -19.5006])
+position= screw_to_homogeneus(screw)
+print(f"position = \n {np.array(position) }")
+##
+
+
+robot_matrix = position  #robot arm position
 
 
 
@@ -207,25 +220,34 @@ def main():
     start_time =time.time()
 
     # df= pd.read_csv('/home/zivid/Zivid/undistorted_results_sample.csv', sep = ',', header= None)
-    df= pd.read_csv('Front2.csv', sep = ',', header= None)
+    # df= pd.read_csv('Front2.csv', sep = ',', header= None)
+    df= pd.read_csv('Test0306.csv', sep = ',', header= None)
+
     df_read_time_end= time.time()
 
     get_skeletonized_image_from_pointcloud(df, 
                                            [1944, 1200], 
                                            image_name_in= "/home/zivid/pytorch_env/LineDetection/images/results3.png",
-                                           threshold=120, 
+                                           threshold=90, 
                                            save=True)
     skeleton_time_end = time.time()
+    get_skeletonized_image_from_pointcloud_canny(df, 
+                                           [1944, 1200], 
+                                           image_name_in= "/home/zivid/pytorch_env/LineDetection/images/results3.png",
+                                           threshold=120, 
+                                           save=True)
+    canny_time_end = time.time()
     ####################################
-    img_path = "/home/zivid/pytorch_env/skeleton.png"
+    img_path = "/home/zivid/pytorch_env/skeleton_HED.png"
     skeleton= ski.io.imread(img_path, as_gray=True)
-####### template round 2  #####################
+
+########################### template Matching if this is not the first iteration, here called "round 2"  #####################
     round2_start_time = time.time()
     if runde2: #change this later to set only this part to activate when re-running on a new image
-        paths= ["weld_path1.csv", "weld_path2.csv"]
+        weld_paths= ["weld_path1.csv", "weld_path2.csv"]
         # paths_templates = ["template_result"]
         apply_template_matching_automation(skel_image= skeleton, 
-                                           path_paths=paths, 
+                                           weld_path_paths=weld_paths, 
                                            df=df, 
                                            matrix_rob=robot_matrix, 
                                            matrix_cam= camera_matrix)
@@ -330,7 +352,7 @@ def main():
         xy_n.append(transform_point)
         iter +=1
 
-    save_point(xy_n, "template_point.csv") #saves the list of points as a csv
+    save_point(xy_n, "template_points.csv") #saves the list of points as a csv
 
 
 
@@ -379,10 +401,6 @@ def main():
 
 
 
-    ##  this wil be used!!
-    # screw= np.array([])
-    # position= screw_to_homogeneus(screw)
-    ##
 
 
 
@@ -467,7 +485,7 @@ def main():
         #### end of transformation ####
 
     # output = do_subsample_extract_transform(df_sorted_lines_comb, df, robot_matrix, camera_matrix, angle_offset=15, chosen_point_distance=10, pose_as_quaternion_xyzw= True)
-    output = do_subsample_extract_transform(df_sorted_lines_comb, raw_to_xyz(df).round(3), robot_matrix, camera_matrix, angle_offset=30, chosen_point_distance=40, pose_as_quaternion_xyzw= True)
+    output = do_subsample_extract_transform(df_sorted_lines1, raw_to_xyz(df).round(3), robot_matrix, camera_matrix, angle_offset=30, chosen_point_distance=40, pose_as_quaternion_xyzw= True)
     # output = do_subsample_extract_transform(df_sorted_transformed_lines_comb.round(3), df_transformed, robot_matrix, camera_matrix, angle_offset=30, chosen_point_distance=40, pose_as_quaternion_xyzw= True)
 
 
@@ -488,7 +506,14 @@ def main():
     print(f"{df_read_time = }")
 
     skeleton_time= skeleton_time_end-start_time
-    print(f"{skeleton_time = }")
+    print(f"time up to: {skeleton_time = }")
+
+    HED_skel_time= skeleton_time_end - df_read_time_end
+    print(f"{HED_skel_time = }")
+
+    canny_time = canny_time_end - skeleton_time_end
+    print(f"{canny_time = }")
+
 
     click_time = second_start_time - click_start_time
     print(f"{click_time = }")
