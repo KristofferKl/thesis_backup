@@ -586,7 +586,7 @@ def load_template(template_path:str="template.png") -> np.ndarray:
 #     x, y = ij[::-1]
 #     return [x,y]
 
-def offset_vec_from_points(point1:list[int], point2:list[int]) -> list[int]:
+def offset_vec_from_points(point1:list[float], point2:list[float]) -> list[float]:
     return [p2 - p1 for p2, p1 in zip(point2, point1)]
 
 # def apply_template_matching_automation(skel_image:np.array, 
@@ -611,6 +611,22 @@ def offset_vec_from_points(point1:list[int], point2:list[int]) -> list[int]:
 #         weld_path_new.to_csv("offest_" + path_name, header=None, index=None)
 
 #         # weld_path= translation
+def frame_from_2_vecs(vec1, vec2):
+    """takes two vectors going out from the same point, calculates a frame with vec1 as x and  y in the direction of vec2
+    Args:
+        vec1 (xyz): becomes x vector
+        vec2 (xyz): becomes ish y vector
+    """
+    #the length is not important here, normalizing?
+    z= np.cross(vec1, vec2)
+    y= -np.cross(vec1, z)
+    x= vec1
+    x /= np.linalg.norm(x)
+    y /= np.linalg.norm(y)
+    z /= np.linalg.norm(z)
+    return [x,y,z]
+    
+    
 
 
 def apply_template_matching_automation(skel_image:np.array, 
@@ -629,6 +645,13 @@ def apply_template_matching_automation(skel_image:np.array,
     # template0= load_template("template0.png")
     # template1= load_template("template1.png")
     # template2= load_template("template2.png")
+    
+    #########calculate vectors for old pixels
+    old_vec1= saved_points[0]- saved_points[1] #the corner point is at location 1
+    old_vec2= saved_points[2]- saved_points[1]
+    ######### calculate frame for old pixels
+    old_frame= frame_from_2_vecs(old_vec1, old_vec2)
+    ##########
 
     templates = []
     new_points = []
@@ -638,13 +661,18 @@ def apply_template_matching_automation(skel_image:np.array,
         new_pixel = match_template(template=template, image=skel_image)
         new_points.append(pixel_to_transformed_point(new_pixel, df=df, matrix_rob=matrix_rob, matrix_cam=matrix_cam))
 
-
     print(f"{new_points = }")
+    ######### Calculate vectors for new pixels
+    new_vec1= new_points[0]- new_points[1]
+    new_vec2= new_points[2]- new_points[1]
+    #########
+    new_frame= frame_from_2_vecs(new_vec1, new_vec2)
+    ##########
 
     offset_vec= offset_vec_from_points(point1=saved_points[1], point2=new_points[1]) #this is the offset for the middle point, might be useless
     print(f"{offset_vec = }")
 
-    for path_name in path_paths:
+    for path_name in weld_path_paths:
         weld_path= pd.read_csv(path_name, header=None)
         weld_path_new= df_translation(vector=offset_vec,points=weld_path)
         weld_path_new.to_csv("offest_" + path_name, header=None, index=None)
