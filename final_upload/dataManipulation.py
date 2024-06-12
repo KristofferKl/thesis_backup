@@ -667,9 +667,6 @@ def apply_template_matching_automation(skel_image:np.array,
     print(f"{saved_points = }")
 
 
-    # template0= load_template("template0.png")
-    # template1= load_template("template1.png")
-    # template2= load_template("template2.png")
 
     #########calculate vectors for old pixels
     old_vec1= saved_points[0]- saved_points[1] #the corner point is at location 1
